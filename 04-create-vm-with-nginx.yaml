@@ -1,0 +1,4 @@
+- name: Create Azure VM
+  import_playbook: "02-create-vm.yaml"
+- name: Install nginx with static site
+  import_playbook: "03-install-nginx.yaml"

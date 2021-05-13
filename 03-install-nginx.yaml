@@ -1,0 +1,67 @@
+- name: Get VM IP
+  hosts: localhost
+  vars:
+    resource_group: "ansibleVM"
+    vm:
+      username: azureuser
+      public_ip_name: "myPublicIP"
+  tasks:
+    - name: Get network interface details
+      azure_rm_publicipaddress_info:
+        resource_group: "{{resource_group}}"
+        name: "{{vm.public_ip_name}}"
+      register: azure_ips
+    - debug:
+        var: azure_ips
+    - name: print public IP
+      debug: msg="Public ip is {{azure_ips.publicipaddresses[0].ip_address}}"
+    - name: Add host to group azure
+      add_host:
+        name: '{{ azure_ips.publicipaddresses[0].ip_address }}'
+        groups: azure
+        ansible_user: '{{vm.username}}'
+        ansible_ssh_private_key_file: "azure_rsa"
+        ansible_ssh_extra_args: "-o IdentitiesOnly=yes -o StrictHostKeyChecking=no"
+        ansible_host_key_checking: false
+        resource_group: "{{resource_group}}"
+
+- name: Install nginx on VM and add static site
+  hosts: azure
+  become: true
+  tasks:
+    - name: Add epel-release repo
+      yum:
+        name: epel-release
+        state: present
+    - name: Remove nginx
+      yum:
+        name: nginx
+        state: absent
+    - name: Install nginx
+      yum:
+        name: nginx
+        state: present
+    - name: Insert Index Page
+      template:
+        src: index.html
+        dest: /usr/share/nginx/html/index.html
+    - name: Start NGiNX
+      service:
+        name: nginx
+        state: restarted
+    - name: Create Network Security Group that allows HTTP
+      become: false
+      delegate_to: localhost
+      azure_rm_securitygroup:
+        resource_group: "{{ resource_group }}"
+        name: myNetworkSecurityGroup
+        rules:
+          - name: HTTP
+            protocol: Tcp
+            destination_port_range: 80
+            access: Allow
+            priority: 1002
+            direction: Inbound
+    - name: print URL
+      debug: msg="The site is available on http://{{ansible_host}}"
+
